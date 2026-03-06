@@ -517,6 +517,26 @@
     // ─── Backend base URL ───────────────────────────────────────────
     // When served via Flask (python app.py), Flask serves index.html at /
     // so relative URLs work perfectly. Change only if deploying separately.
+    // ── Cross-origin fetch wrapper ───────────────────────────────────────────
+    // Automatically adds credentials (cookies) and ngrok header to all requests.
+    // This is required when frontend (Vercel) and backend (ngrok) are on different origins.
+    async function apiFetch(path, options = {}) {
+        const url = (window.__JURISAI_BACKEND_URL__ || '') + path;
+        const headers = {
+            ...(options.headers || {}),
+            'ngrok-skip-browser-warning': 'true',   // bypass ngrok interstitial page
+        };
+        // Don't set Content-Type for FormData — browser sets it with boundary automatically
+        if (options.body && !(options.body instanceof FormData)) {
+            headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+        }
+        return fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',   // send session cookie cross-origin
+        });
+    }
+
     // ── Backend URL configuration ──────────────────────────────────────────
     // When running locally:        BASE_URL = ''
     // When frontend is on Vercel:  BASE_URL = your ngrok/tunnel URL
@@ -841,7 +861,7 @@
         const endpoint = category === 'pdf' ? '/upload' : '/upload_file';
 
         try {
-            const res = await fetch(`${BASE_URL}${endpoint}`, { method: 'POST', body: formData });
+            const res = await apiFetch(`${endpoint}`, { method: 'POST', body: formData });
             const data = await res.json();
             clearInterval(fakeTimer);
 
@@ -891,7 +911,7 @@
 
     function resetUpload() {
         if (currentFilename) {
-            fetch(`${BASE_URL}/remove`, {
+            apiFetch(`/remove`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename: currentFilename })
@@ -934,7 +954,7 @@
         summaryContent.innerText = '';
 
         try {
-            const res = await fetch(`${BASE_URL}/summary?lang=${currentLanguageCode}`);
+            const res = await apiFetch(`/summary?lang=${currentLanguageCode}`);
             const data = await res.json();
             summaryLoading.classList.add('hidden');
             summaryLoading.classList.remove('flex');
@@ -961,7 +981,7 @@
         resetRiskGauge();
 
         try {
-            const res = await fetch(`${BASE_URL}/risk?lang=${currentLanguageCode}`);
+            const res = await apiFetch(`/risk?lang=${currentLanguageCode}`);
             const data = await res.json();
 
             if (data.error) {
@@ -1054,7 +1074,7 @@
         document.getElementById('chat-status').innerText = 'Thinking…';
 
         try {
-            const res = await fetch(`${BASE_URL}/chat`, {
+            const res = await apiFetch(`/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: text, lang: currentLanguageCode })
@@ -1157,7 +1177,7 @@
         document.getElementById('stop-tts-btn')?.classList.remove('hidden');
 
         try {
-            const res = await fetch(`${BASE_URL}/tts`, {
+            const res = await apiFetch(`/tts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: rawText, lang: currentLanguageCode })
@@ -1239,7 +1259,7 @@
 
     async function pollSessionInfo() {
         try {
-            const res  = await fetch('/session/info');
+            const res  = await apiFetch('/session/info');
             const data = await res.json();
             const badge = document.getElementById('session-badge');
             const label = document.getElementById('session-ttl-label');
@@ -1288,7 +1308,7 @@
         if (!confirmed) return;
 
         try {
-            await fetch('/session/end', { method: 'POST' });
+            await apiFetch('/session/end', { method: 'POST' });
         } catch (e) { /* ignore */ }
 
         // Reset UI
